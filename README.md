@@ -67,3 +67,15 @@ you to publish your own source code.
 
 Existing license grants and separately licensed third-party material remain
 unaffected. See [LICENSE](LICENSE) for the complete terms.
+
+## Current game profile presentation
+
+After successful sign-in, give the owning local player's
+`UCUGameProfileSession` the connection name, authenticated generation and
+verified User ID. `LoadCurrentGameProfile` requests the configured operation
+and supplies its presentation source to consumers via `PresentationSource`.
+The operation must return a bounded Magritte graph rooted at the verified
+User's description. The object's graph ID must be the verified User ID. The
+server selects the current game profile and authorizes its relations against
+the session. Call `ClearProfile` on sign-out. A stopped connection or retired
+generation makes the graph unavailable.

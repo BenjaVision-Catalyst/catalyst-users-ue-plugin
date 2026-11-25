@@ -5,7 +5,7 @@ public class CatalystUsers : ModuleRules
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
         bEnableExceptions = true;
-        PublicDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "CatalystConnectObjects" });
-        PrivateDependencyModuleNames.AddRange(new[] { "CatalystFoundation", "CatalystConnect" });
+        PublicDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "CatalystConnectObjects", "CatalystFoundation" });
+        PrivateDependencyModuleNames.AddRange(new[] { "CatalystConnect" });
     }
 }
