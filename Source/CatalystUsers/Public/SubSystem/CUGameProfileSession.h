@@ -24,11 +24,14 @@ public:
     // The installed operation reads the current game profile of that session.
     bool LoadCurrentGameProfile(FName Connection, uint64 AuthenticatedGeneration, uint16 Operation,
         TConstArrayView<uint8> Request, const FString& VerifiedUserId);
+    /** Request an updated profile from the same authenticated connection. */
+    bool RequestProfileUpdate(uint16 Operation, TConstArrayView<uint8> Request);
     void ClearProfile();
 
     TOptional<FCFMagritteBinding> CurrentUser() const;
 
 private:
+    bool QueueProfileGraph(uint16 Operation, TConstArrayView<uint8> Request, const FString& VerifiedUserId);
     UFUNCTION()
     void ConnectionChanged(FName Connection, ECCConnectState State, int32 Reason);
 

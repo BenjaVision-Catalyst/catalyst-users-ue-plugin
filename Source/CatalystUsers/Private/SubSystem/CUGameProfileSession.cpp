@@ -134,9 +134,29 @@ bool UCUGameProfileSession::LoadCurrentGameProfile(FName Connection, uint64 Auth
         Connect = Transport;
         Transport->OnConnectionStateChanged.AddUniqueDynamic(this, &UCUGameProfileSession::ConnectionChanged);
     }
-    const uint64 Generation = AuthenticatedGeneration;
+    ActiveConnection = Connection;
+    ActiveGeneration = AuthenticatedGeneration;
+    if (QueueProfileGraph(Operation, Request, VerifiedUserId))
+    {
+        return true;
+    }
+    ClearProfile();
+    return false;
+}
+
+bool UCUGameProfileSession::RequestProfileUpdate(uint16 Operation, TConstArrayView<uint8> Request)
+{
+    const auto Current = CurrentUser();
+    return Operation && Current && !ActiveRequest
+        && QueueProfileGraph(Operation, Request, UTF8_TO_TCHAR(Current->ObjectId().c_str()));
+}
+
+bool UCUGameProfileSession::QueueProfileGraph(uint16 Operation, TConstArrayView<uint8> Request, const FString& VerifiedUserId)
+{
+    auto* Transport = Connect.Get();
+    const uint64 Generation = ActiveGeneration;
     const uint64 Serial = LoadSerial;
-    const auto Result = Transport->TryRequest(Connection, Transport, nullptr, Operation, Request,
+    const auto Result = Transport->TryRequest(ActiveConnection, Transport, nullptr, Operation, Request,
         FCCConnectReplyCallback::CreateWeakLambda(this, [this, Serial, Generation, VerifiedUserId](const FCCConnectReply& Reply)
         {
             if (LoadSerial != Serial || Reply.Generation != Generation)
@@ -144,34 +164,43 @@ bool UCUGameProfileSession::LoadCurrentGameProfile(FName Connection, uint64 Auth
                 return;
             }
             ActiveRequest = 0;
-            if (Reply.Status == 0 && !Reply.Body.IsEmpty() &&
-                Connect.IsValid() && Connect->GetConnectionGeneration(ActiveConnection) == Generation)
+            if (Reply.Status != 0 || Reply.Body.IsEmpty() || !Connect.IsValid()
+                || Connect->GetConnectionGeneration(ActiveConnection) != Generation)
             {
-                try
+                if (!User && Source)
                 {
-                    if (const auto Json = ProfileGraphJson(Reply.Body))
+                    Source->OnChanged().Broadcast();
+                }
+                return;
+            }
+
+            try
+            {
+                if (const auto Json = ProfileGraphJson(Reply.Body))
+                {
+                    auto Graph = std::make_shared<magritte::Graph>(magritte::Graph::decode(*Json));
+                    auto Candidate = FCFMagritteBinding::Find(Graph, TCHAR_TO_UTF8(*VerifiedUserId));
+                    if (Candidate && Candidate->Describe().id == Graph->root)
                     {
-                        auto Graph = std::make_shared<magritte::Graph>(magritte::Graph::decode(*Json));
-                        auto Candidate = FCFMagritteBinding::Find(Graph, TCHAR_TO_UTF8(*VerifiedUserId));
-                        if (Candidate && Candidate->Describe().id == Graph->root)
-                        {
-                            User = MoveTemp(Candidate);
-                        }
+                        User = MoveTemp(Candidate);
+                        Source->OnChanged().Broadcast();
+                        return;
                     }
                 }
-                catch (const std::exception&)
-                {
-                    User.Reset();
-                }
             }
-            Source->OnChanged().Broadcast();
+            catch (const std::exception&)
+            {
+                // A rejected update keeps the last verified profile available.
+            }
+            if (!User && Source)
+            {
+                Source->OnChanged().Broadcast();
+            }
         }), 10.0, Generation);
     if (Result.Result != ECCConnectResult::Queued)
     {
         return false;
     }
-    ActiveConnection = Connection;
-    ActiveGeneration = Generation;
     ActiveRequest = Result.RequestId;
     return true;
 }
