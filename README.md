@@ -79,3 +79,10 @@ User's description. The object's graph ID must be the verified User ID. The
 server selects the current game profile and authorizes its relations against
 the session. Call `ClearProfile` on sign-out. A stopped connection or retired
 generation makes the graph unavailable.
+
+The game profile operation accepts a UTF-8 Magritte graph or a bounded
+compressed reply. Compressed replies begin with the four bytes ZLIB, followed
+by the uncompressed length as an unsigned 32-bit little-endian integer and a
+zlib stream. The reader caps the decoded graph at 65,536 bytes and Connect
+enforces its frame limit. The decoded graph still has to identify the verified
+user at its root.

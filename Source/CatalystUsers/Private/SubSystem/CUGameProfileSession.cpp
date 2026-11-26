@@ -1,10 +1,39 @@
 #include "SubSystem/CUGameProfileSession.h"
 
 #include "Engine/LocalPlayer.h"
+#include "Misc/Compression.h"
 #include "SubSystem/CCSubsystem.h"
 
 namespace
 {
+TOptional<std::string> ProfileGraphJson(TConstArrayView<uint8> Body)
+{
+    constexpr int32 HeaderSize = 8;
+    constexpr uint32 MaxGraphBytes = 65536;
+    if (Body.Num() < 4 || FMemory::Memcmp(Body.GetData(), "ZLIB", 4) != 0)
+    {
+        return std::string(reinterpret_cast<const char*>(Body.GetData()), Body.Num());
+    }
+    if (Body.Num() <= HeaderSize)
+    {
+        return {};
+    }
+
+    const uint32 Size = uint32(Body[4]) | (uint32(Body[5]) << 8) |
+        (uint32(Body[6]) << 16) | (uint32(Body[7]) << 24);
+    if (Size == 0 || Size > MaxGraphBytes)
+    {
+        return {};
+    }
+    std::string Json(Size, '\0');
+    if (!FCompression::UncompressMemory(NAME_Zlib, Json.data(), Size,
+        Body.GetData() + HeaderSize, Body.Num() - HeaderSize))
+    {
+        return {};
+    }
+    return Json;
+}
+
 class FCUPlayerProfileSource final : public ICFPlayerMagritteSource
 {
 public:
@@ -120,12 +149,14 @@ bool UCUGameProfileSession::LoadCurrentGameProfile(FName Connection, uint64 Auth
             {
                 try
                 {
-                    auto Graph = std::make_shared<magritte::Graph>(magritte::Graph::decode(
-                        std::string(reinterpret_cast<const char*>(Reply.Body.GetData()), Reply.Body.Num())));
-                    auto Candidate = FCFMagritteBinding::Find(Graph, TCHAR_TO_UTF8(*VerifiedUserId));
-                    if (Candidate && Candidate->Describe().id == Graph->root)
+                    if (const auto Json = ProfileGraphJson(Reply.Body))
                     {
-                        User = MoveTemp(Candidate);
+                        auto Graph = std::make_shared<magritte::Graph>(magritte::Graph::decode(*Json));
+                        auto Candidate = FCFMagritteBinding::Find(Graph, TCHAR_TO_UTF8(*VerifiedUserId));
+                        if (Candidate && Candidate->Describe().id == Graph->root)
+                        {
+                            User = MoveTemp(Candidate);
+                        }
                     }
                 }
                 catch (const std::exception&)
